@@ -26,7 +26,8 @@ defmodule Cassette.Config do
   config :cassette, username: "john.doe"
   ```
 
-  `Cassette.Server`s call the `resolve/1` function on this module to resolve any configuration using environment variables.
+  `Cassette.Server`s call the `resolve/1` function on this module to resolve any configuration using
+  environment variables.
   To use an environment variable set the value to `{:system, "SOME_ENVIRONMENT_VARIABLE"}`.
 
   Or in `config.exs`:
