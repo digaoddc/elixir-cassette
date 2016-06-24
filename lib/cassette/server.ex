@@ -31,8 +31,8 @@ defmodule Cassette.Server do
 
   @doc false
 
-  def start_link(name, cfg) do
-    GenServer.start_link(__MODULE__, {:ok, cfg}, name: name)
+  def start_link(name, config) do
+    GenServer.start_link(__MODULE__, {:ok, config}, name: name)
   end
 
   @spec validate(pid, String.t, String.t) :: {:ok, User.t} | {:error, term}
@@ -81,16 +81,16 @@ defmodule Cassette.Server do
   Initializes the server with the given configuration
   """
 
-  def init({:ok, cfg}) do
-    {:ok, %State{config: Config.resolve(cfg)}}
+  def init({:ok, config}) do
+    {:ok, %State{config: Config.resolve(config)}}
   end
 
   @doc """
   Changes the internal state configuration to `config`
   """
 
-  def reload(server, cfg) do
-    GenServer.call(server, {:reload, cfg})
+  def reload(server, config) do
+    GenServer.call(server, {:reload, config})
   end
 
   @spec handle_call(
@@ -99,8 +99,8 @@ defmodule Cassette.Server do
     State.t
   ) :: {:reply, validate_reply | tgt_reply | st_reply | reload_reply | config_reply, State.t}
 
-  def handle_call({:validate, ticket, service, now}, _from, state = %State{validations: validations, config: cfg}) do
-    case evaluate_validation(cfg, service, ticket, Map.get(validations, {service, ticket}), now) do
+  def handle_call({:validate, ticket, service, now}, _from, state = %State{validations: validations, config: config}) do
+    case evaluate_validation(config, service, ticket, Map.get(validations, {service, ticket}), now) do
       {:ok, user, expires_at} ->
         {:reply, {:ok, user}, State.put_validation(state, {service, ticket}, {user, expires_at})}
 
@@ -109,12 +109,12 @@ defmodule Cassette.Server do
     end
   end
 
-  def handle_call({:config}, _from, state = %State{config: cfg}) do
-    {:reply, cfg, state}
+  def handle_call({:config}, _from, state = %State{config: config}) do
+    {:reply, config, state}
   end
 
-  def handle_call({:st, current_tgt, service, now}, _from, state = %State{config: cfg, tgt: {:tgt, _, current_tgt}, sts: sts}) do
-    case evaluate_st(cfg, current_tgt, service, Map.get(sts, service), now) do
+  def handle_call({:st, current_tgt, service, now}, _from, state = %State{config: config, tgt: {:tgt, _, current_tgt}, sts: sts}) do
+    case evaluate_st(config, current_tgt, service, Map.get(sts, service), now) do
       {:ok, new_st, expires_at} ->
         {:reply, {:ok, new_st}, State.put_st(state, service, {new_st, expires_at})}
       reply ->
@@ -122,9 +122,9 @@ defmodule Cassette.Server do
     end
   end
 
-  def handle_call({:tgt, now}, _from, state = %State{config: cfg, tgt: current_tgt}) when now > elem(current_tgt, 1) do
-    case Client.tgt(cfg) do
-      {:ok, new_tgt} -> {:reply, {:ok, new_tgt}, State.put_tgt(state, new_tgt, time_now() + cfg.tgt_ttl)}
+  def handle_call({:tgt, now}, _from, state = %State{config: config, tgt: current_tgt}) when now > elem(current_tgt, 1) do
+    case Client.tgt(config) do
+      {:ok, new_tgt} -> {:reply, {:ok, new_tgt}, State.put_tgt(state, new_tgt, time_now() + config.tgt_ttl)}
       {:error, :bad_credentials} -> {:reply, {:error, "Bad credentials"}, state}
       {:fail, :unknown} -> {:reply, {:error, "Failed for unknown reason"}, state}
       {:fail, status_code} -> {:reply, {:error, "Failed with status #{status_code}"}, state}
@@ -135,8 +135,8 @@ defmodule Cassette.Server do
     {:reply, {:ok, current_tgt}, state}
   end
 
-  def handle_call({:reload, cfg = %Config{}}, _from, _state) do
-    {:ok, state} = init({:ok, cfg})
+  def handle_call({:reload, config = %Config{}}, _from, _state) do
+    {:ok, state} = init({:ok, config})
     {:reply, :ok, state}
   end
 
@@ -150,14 +150,14 @@ defmodule Cassette.Server do
   @spec evaluate_validation(Config.t, String.t, String.t, State.st, non_neg_integer()) ::
     {:ok, User.t, non_neg_integer()} | {:error, term}
 
-  defp evaluate_validation(cfg, service, ticket, _, _) do
-    reply = case ValidateTicket.perform(cfg, ticket, service) do
+  defp evaluate_validation(config, service, ticket, _, _) do
+    reply = case ValidateTicket.perform(config, ticket, service) do
       {:ok, body} -> Authentication.handle_response(body)
       {:fail, reason} -> {:error, reason}
     end
 
     case reply do
-      {:ok, user} -> {:ok, user, time_now() + cfg.validation_ttl}
+      {:ok, user} -> {:ok, user, time_now() + config.validation_ttl}
       reply -> reply
     end
   end
@@ -171,9 +171,9 @@ defmodule Cassette.Server do
   @spec evaluate_st(Config.t, String.t, String.t, State.st, non_neg_integer()) ::
     {:ok, String.t, non_neg_integer()} | {:error, term}
 
-  defp evaluate_st(cfg, current_tgt, service, _, _) do
-    reply = case Client.st(cfg, current_tgt, service) do
-      {:ok, new_st} -> {:ok, new_st, time_now() + cfg.st_ttl}
+  defp evaluate_st(config, current_tgt, service, _, _) do
+    reply = case Client.st(config, current_tgt, service) do
+      {:ok, new_st} -> {:ok, new_st, time_now() + config.st_ttl}
       {:error, :bad_tgt} -> {:error, "TGT expired"}
       {:fail, status_code, body} -> {:error, "Failed with status #{status_code}: #{body}"}
       {:fail, :unknown} -> {:error, "Failed for unknown reason"}

@@ -93,8 +93,8 @@ defmodule Cassette.Support do
       end
 
       @doc false
-      def reload(cfg \\ Config.default) do
-        Server.reload(@name, cfg)
+      def reload(config \\ Config.default) do
+        Server.reload(@name, config)
       end
     end
   end
